@@ -1,6 +1,6 @@
 const axios = require('axios');
+const { logToTestServer } = require('../logging_middleware/index.js');
 
-// Fallback data directly from your evaluation screenshots
 const fallbackDepots = [
     { "ID": 1, "MechanicHours": 60 },
     { "ID": 2, "MechanicHours": 135 },
@@ -42,11 +42,6 @@ const fallbackVehicles = [
     { "TaskID": "7d81e6ca-8f03-4c4a-9ec0-701f820c5655", "Duration": 7, "Impact": 8 }
 ];
 
-function logInfo(message) {
-    const timestamp = new Date().toISOString();
-    console.log(`[LOG_INFO - ${timestamp}]: ${message}`);
-}
-
 function solveKnapsack(depotBudget, tasks) {
     const n = tasks.length;
     const dp = Array.from({ length: n + 1 }, () => Array(depotBudget + 1).fill(0));
@@ -76,7 +71,9 @@ function solveKnapsack(depotBudget, tasks) {
 
 async function runScheduler() {
     const API_BASE = "http://20.207.122.201/evaluation-service";
-    logInfo("Fetching depots and tasks from APIs...");
+    
+    // Using the logging middleware
+    await logToTestServer('info', 'service', 'Fetching depots and tasks from APIs...');
 
     let depots = fallbackDepots;
     let tasks = fallbackVehicles;
@@ -86,13 +83,13 @@ async function runScheduler() {
         const vehiclesRes = await axios.get(`${API_BASE}/vehicles`, { timeout: 2000 });
         depots = depotsRes.data.depots;
         tasks = vehiclesRes.data.vehicles;
-        logInfo("Successfully retrieved data from the test server.");
+        await logToTestServer('info', 'service', 'Successfully retrieved data from server.');
     } catch (error) {
-        logInfo("Network/Auth error encountered. Switching to fallback screenshot dataset directly.");
+        await logToTestServer('warn', 'service', 'Switching to local fallback screenshot dataset.');
     }
 
-    depots.forEach(depot => {
-        logInfo(`Optimizing for Depot ID: ${depot.ID} (Hours: ${depot.MechanicHours})`);
+    depots.forEach(async (depot) => {
+        await logToTestServer('info', 'service', `Optimizing for Depot ID: ${depot.ID}`);
         const result = solveKnapsack(depot.MechanicHours, tasks);
         
         console.log(`\n--- Depot ${depot.ID} Result ---`);

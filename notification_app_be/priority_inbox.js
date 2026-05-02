@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { logToTestServer } = require('../logging_middleware/index.js');
 
 const fallbackNotifications = [
     { "ID": "d146095a-0d86-4a34-9e69-3900a14576bc", "Type": "Result", "Message": "mid-sem", "Timestamp": "2026-04-22 17:51:30" },
@@ -44,14 +45,18 @@ function getTopN(notifications, n = 10) {
 
 async function fetchNotifications() {
     const url = "http://20.207.122.201/evaluation-service/notifications";
+    
+    // Using middleware for startup log
+    await logToTestServer('info', 'handler', 'Attempting to fetch data from Notification API.');
+
     let notifications = fallbackNotifications;
 
     try {
-        console.log("Attempting to connect to Notification API...");
         const res = await axios.get(url, { timeout: 2000 });
         notifications = res.data.notifications;
+        await logToTestServer('info', 'handler', 'Successfully downloaded live notifications.');
     } catch (err) {
-        console.log("Using local sample data from task screenshots for evaluation.");
+        await logToTestServer('warn', 'handler', 'Using local fallback notifications dataset.');
     }
 
     const top10 = getTopN(notifications, 10);
