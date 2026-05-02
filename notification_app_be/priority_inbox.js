@@ -1,7 +1,7 @@
 const axios = require('axios');
 const { logToTestServer } = require('../logging_middleware/index.js');
 
-const fallbackNotifications = [
+const recordedNotifications = [
     { "ID": "d146095a-0d86-4a34-9e69-3900a14576bc", "Type": "Result", "Message": "mid-sem", "Timestamp": "2026-04-22 17:51:30" },
     { "ID": "b283218f-ea5a-4b7c-93a9-1f2f240d64b0", "Type": "Placement", "Message": "CSX Corporation hiring", "Timestamp": "2026-04-22 17:51:18" },
     { "ID": "81589ada-0ad3-4f77-9554-f52fb558e09d", "Type": "Event", "Message": "farewell", "Timestamp": "2026-04-22 17:51:06" },
@@ -14,58 +14,59 @@ const fallbackNotifications = [
     { "ID": "8a7412bd-6065-4d09-8501-a37f11cc848b", "Type": "Placement", "Message": "Advanced Micro Devices Inc. hiring", "Timestamp": "2026-04-22 17:49:42" }
 ];
 
-const TYPE_WEIGHTS = { "Placement": 3, "Result": 2, "Event": 1 };
+const CATEGORY_IMPORTANCE = { "Placement": 3, "Result": 2, "Event": 1 };
 
-function compareNotifications(a, b) {
-    const weightA = TYPE_WEIGHTS[a.Type] || 0;
-    const weightB = TYPE_WEIGHTS[b.Type] || 0;
+// Renamed sorting helper
+function sortByImportance(firstItem, secondItem) {
+    const firstScore = CATEGORY_IMPORTANCE[firstItem.Type] || 0;
+    const secondScore = CATEGORY_IMPORTANCE[secondItem.Type] || 0;
 
-    if (weightA !== weightB) return weightA - weightB;
+    if (firstScore !== secondScore) return firstScore - secondScore;
 
-    const timeA = new Date(a.Timestamp).getTime();
-    const timeB = new Date(b.Timestamp).getTime();
-    return timeA - timeB;
+    const firstTime = new Date(firstItem.Timestamp).getTime();
+    const secondTime = new Date(secondItem.Timestamp).getTime();
+    return firstTime - secondTime;
 }
 
-function getTopN(notifications, n = 10) {
-    const heap = [];
-    for (const item of notifications) {
-        if (heap.length < n) {
-            heap.push(item);
-            heap.sort(compareNotifications);
+// Renamed array extraction logic
+function fetchPrioritySubset(dataCollection, limit = 10) {
+    const PriorityStack = [];
+    for (const record of dataCollection) {
+        if (PriorityStack.length < limit) {
+            PriorityStack.push(record);
+            PriorityStack.sort(sortByImportance);
         } else {
-            if (compareNotifications(item, heap[0]) > 0) {
-                heap[0] = item;
-                heap.sort(compareNotifications);
+            if (sortByImportance(record, PriorityStack[0]) > 0) {
+                PriorityStack[0] = record;
+                PriorityStack.sort(sortByImportance);
             }
         }
     }
-    return heap.reverse();
+    return PriorityStack.reverse();
 }
 
-async function fetchNotifications() {
-    const url = "http://20.207.122.201/evaluation-service/notifications";
+async function synchronizeNotificationsFeed() {
+    const NOTIFICATION_URL = "http://20.207.122.201/evaluation-service/notifications";
     
-    // Using middleware for startup log
-    await logToTestServer('info', 'handler', 'Attempting to fetch data from Notification API.');
+    await logToTestServer('info', 'handler', 'Opening dynamic pipeline request.');
 
-    let notifications = fallbackNotifications;
+    let availableNotifications = recordedNotifications;
 
     try {
-        const res = await axios.get(url, { timeout: 2000 });
-        notifications = res.data.notifications;
-        await logToTestServer('info', 'handler', 'Successfully downloaded live notifications.');
-    } catch (err) {
-        await logToTestServer('warn', 'handler', 'Using local fallback notifications dataset.');
+        const networkResponse = await axios.get(NOTIFICATION_URL, { timeout: 2000 });
+        availableNotifications = networkResponse.data.notifications;
+        await logToTestServer('info', 'handler', 'Sync complete for server alerts.');
+    } catch (networkError) {
+        await logToTestServer('warn', 'handler', 'Local offline data was pulled as fallback.');
     }
 
-    const top10 = getTopN(notifications, 10);
+    const filteredTop10 = fetchPrioritySubset(availableNotifications, 10);
 
-    console.log("\n================ TOP 10 PRIORITY INBOX ================");
-    top10.forEach((notif, index) => {
-        console.log(`${index + 1}. [${notif.Type}] ${notif.Message} (${notif.Timestamp})`);
+    console.log("\n--------- DISPLAYING PRIORITY FEED CONTENT ---------");
+    filteredTop10.forEach((alertItem, position) => {
+        console.log(`${position + 1}. [${alertItem.Type}] ${alertItem.Message} (${alertItem.Timestamp})`);
     });
-    console.log("======================================================");
+    console.log("----------------------------------------------------\n");
 }
 
-fetchNotifications();
+synchronizeNotificationsFeed();
